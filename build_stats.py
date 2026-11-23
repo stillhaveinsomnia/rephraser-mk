@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import gzip
+import shutil
 import sqlite3
 import sys
 import tarfile
@@ -115,6 +117,10 @@ def main() -> None:
     db.close()
     print(f"готово: {sentences} предложений, {total} слов, {kept} пар, {OUT.stat().st_size / 1e6:.0f} МБ, "
           f"{time.time() - t0:.0f} с")
+    packed = OUT.with_name(OUT.name + ".gz")   # эту копию хранит репозиторий и загружает браузер
+    with open(OUT, "rb") as src, gzip.open(packed, "wb", compresslevel=9) as dst:
+        shutil.copyfileobj(src, dst)
+    print(f"сжато: {packed.name}, {packed.stat().st_size / 1e6:.0f} МБ")
 
 
 if __name__ == "__main__":

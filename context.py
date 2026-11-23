@@ -8,8 +8,10 @@
 
 from __future__ import annotations
 
+import gzip
 import math
 import re
+import shutil
 import sqlite3
 import threading
 from functools import lru_cache
@@ -25,10 +27,24 @@ MIN_PAIR = 3        # пара считается подтверждённой, 
 _lock = threading.Lock()
 
 
+def _unpack(path: Path) -> bool:
+    """В репозитории таблица лежит сжатой; без распакованной копии берём её из .gz."""
+    if path.is_file():
+        return True
+    packed = path.with_name(path.name + ".gz")
+    if not packed.is_file():
+        return False
+    tmp = path.with_name(path.name + ".tmp")
+    with gzip.open(packed, "rb") as src, open(tmp, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    tmp.replace(path)
+    return True
+
+
 @lru_cache(maxsize=4)
 def _db(lang: str):
     path = DATA / f"cooc_{lang}.sqlite"
-    if not path.is_file():
+    if not _unpack(path):
         return None
     db = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, check_same_thread=False)
     total = db.execute("SELECT value FROM meta WHERE key='total'").fetchone()[0]

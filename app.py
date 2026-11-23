@@ -34,7 +34,12 @@ class EditRequest(BaseModel):
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(ROOT / "static" / "index.html", headers={"Cache-Control": "no-store"})
+    return FileResponse(ROOT / "index.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/ping")
+def ping() -> dict:
+    return {"ok": True}
 
 
 @app.post("/api/edit")

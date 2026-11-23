@@ -83,6 +83,7 @@
   #pop .why { color: var(--muted); font-size: 13px; }
   .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
   #error { display: none; }
+  #status { font-style: italic; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -132,8 +133,9 @@
       <button class="primary" id="go">Отредактировать</button>
     </div>
     <div class="badge warn" id="error" role="alert"></div>
+    <p class="note" id="status" hidden role="status"></p>
     <p class="note"><b>Минимальная</b> — типографика и орфография. <b>Умеренная</b> — ещё речевые ошибки, кальки, слова-паразиты. <b>Глубокая</b> — ещё замена разговорных оборотов на научные (если снята галочка авторского стиля).</p>
-    <p class="note"><b>Автозамена синонимами</b> — механическая подстановка по словарю: она не понимает контекста и может исказить смысл. Каждую замену можно поменять на другой вариант или вернуть в списке справа.</p>
+    <p class="note"><b>Автозамена синонимами</b> — подстановка по словарю с проверкой по корпусу текстов: смысла она не понимает и может исказить термин. Просматривайте результат целиком; каждую замену можно сменить на другой вариант или вернуть в списке справа.</p>
   </section>
 
   <section>
@@ -184,17 +186,69 @@ function settings() {
   };
 }
 
-async function run(text, fresh = false) {
-  const res = await fetch("/api/edit", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, original, fresh, ...settings() }),
-  });
+// ---- транспорт: локальный сервер (python app.py) или Python прямо в браузере (Pyodide, для GitHub Pages)
+const setStatus = t => { $("status").textContent = t; $("status").hidden = !t; };
+let mode = null, worker = null, seq = 0;
+const waiting = new Map();
+
+async function detectMode() {
+  if (location.protocol === "file:") return "file";
+  try {
+    const ctl = new AbortController();
+    setTimeout(() => ctl.abort(), 2500);
+    const r = await fetch("api/ping", { signal: ctl.signal });
+    if (r.ok && (await r.json()).ok === true) return "server";
+  } catch { /* сервера нет — работаем в браузере */ }
+  return "browser";
+}
+
+function startWorker() {
+  worker = new Worker("worker.js", { type: "module" });
+  worker.onmessage = ({ data: m }) => {
+    if ("progress" in m) { setStatus(m.progress); return; }
+    const w = waiting.get(m.id);
+    if (!w) return;
+    waiting.delete(m.id);
+    m.ok ? w.resolve(m.data) : w.reject(new Error(m.error));
+  };
+  worker.onerror = () => {
+    for (const w of waiting.values()) w.reject(new Error("Не удалось запустить редактор в браузере."));
+    waiting.clear(); worker = null; setStatus("");
+  };
+}
+
+function viaWorker(op, payload) {
+  if (!worker) startWorker();
+  return new Promise((resolve, reject) => { const id = ++seq; waiting.set(id, { resolve, reject }); worker.postMessage({ id, op, payload }); });
+}
+
+async function viaServer(op, payload) {
+  const res = await fetch("api/" + op, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const d = data.detail;
     throw new Error(typeof d === "string" ? d : res.status === 422 ? "Текст слишком длинный или настройки некорректны." : "Ошибка сервера (" + res.status + ").");
   }
+  return data;
+}
+
+const modeReady = detectMode().then(m => {
+  mode = m;
+  if (m === "file") showError("Страницу нельзя открыть как файл: браузер не запускает Python из file://. Откройте её через GitHub Pages или командой python app.py.");
+  else if (m === "browser") {
+    setStatus("Запускаю редактор в браузере (первый раз — загрузка ~10 МБ)…");
+    viaWorker("init", {}).catch(e => { setStatus(""); showError(e.message); });
+  }
+});
+
+async function call(op, payload) {
+  await modeReady;
+  if (mode === "file") throw new Error("Откройте страницу через GitHub Pages или командой python app.py.");
+  return (mode === "server" ? viaServer : viaWorker)(op, payload);
+}
+
+async function run(text, fresh = false) {
+  const data = await call("edit", { text, original, fresh, ...settings() });
   last = data; active = -1;
   appliedAll.push(...data.applied);
   $("copy").disabled = false;
@@ -276,10 +330,7 @@ $("out").addEventListener("click", async e => {
   if (!w) { hidePop(); return; }
   let data;
   try {
-    const res = await fetch("/api/synonyms", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: last.edited, start: w.start, end: w.end }) });
-    data = await res.json();
-    if (!res.ok) throw new Error();
+    data = await call("synonyms", { text: last.edited, start: w.start, end: w.end });
   } catch { hidePop(); return; }
   pop.textContent = "";
   pop.appendChild(el("div", "«" + w.word + "»", "what"));
