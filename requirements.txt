@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+pymorphy3
+pymorphy3-dicts-ru
+pymorphy3-dicts-uk

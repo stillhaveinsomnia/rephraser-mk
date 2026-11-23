@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Академический редактор</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --panel: #fffdf9; --ink: #1f2328; --muted: #6b7280; --line: #e2ddd2;
+    --accent: #2f5d50; --accent-ink: #fff; --ins: #d9f2e0; --ins-ink: #14532d;
+    --del: #fbe0e0; --del-ink: #8a1c1c; --warn: #9a5b00; --warn-bg: #fff4dc; --ok: #1f6b45; --ok-bg: #e4f4ea;
+    --mark: #ffe9a8; --mark-ink: #1f2328; --mark-active: #ffc94d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181b; --panel: #1e2125; --ink: #e7e5e0; --muted: #9aa0a8; --line: #30343a;
+      --accent: #6fb39c; --accent-ink: #10211c; --ins: #173a27; --ins-ink: #a8e6bf;
+      --del: #45201f; --del-ink: #f2b3b0; --warn: #f0c060; --warn-bg: #3a2e12; --ok: #8fd9ae; --ok-bg: #183426;
+      --mark: #4a3d12; --mark-ink: #f4e3a6; --mark-active: #7a6212;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 20px 28px 8px; }
+  h1 { margin: 0; font: 600 22px/1.2 Georgia, "Times New Roman", serif; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 78ch; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 16px 28px 40px; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+  h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  textarea, .output { width: 100%; min-height: 340px; padding: 12px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--ink); font: 16px/1.6 Georgia, "Times New Roman", serif; }
+  textarea { resize: vertical; }
+  textarea:focus-visible, select:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .output { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow: auto; }
+  .output:empty::before { content: "Здесь появится отредактированный текст."; color: var(--muted); font-style: italic; }
+  .settings { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 14px; }
+  @media (max-width: 560px) { .settings { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 13px; color: var(--muted); }
+  select, input[type=range] { width: 100%; margin-top: 4px; }
+  select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); font: inherit; }
+  .checks { margin-top: 12px; }
+  .checks label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 8px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 10px 20px; }
+  button:disabled { opacity: .55; cursor: default; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tabs button[aria-selected=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .tabs .spacer { flex: 1; }
+  ins { background: var(--ins); color: var(--ins-ink); text-decoration: none; border-radius: 3px; }
+  del { background: var(--del); color: var(--del-ink); border-radius: 3px; }
+  mark { background: var(--mark); color: var(--mark-ink); border-radius: 3px; cursor: pointer; }
+  mark.active { background: var(--mark-active); }
+  mark.swapped { background: var(--ins); color: var(--ins-ink); }
+  mark.synonym { background: none; color: inherit; border-bottom: 2px dotted var(--accent); border-radius: 0; }
+  mark.swapped.active, mark.synonym.active { outline: 2px solid var(--accent); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .stat { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .badge { display: block; padding: 8px 12px; border-radius: 8px; margin-top: 8px; font-size: 14px; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge ul { margin: 4px 0 0; padding-left: 18px; }
+  details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chips span { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
+  .list { list-style: none; margin: 8px 0 0; padding: 0; max-height: 340px; overflow: auto; }
+  .list li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; font-size: 14px; }
+  .list li.active { border-color: var(--accent); }
+  .list .what { font-family: Georgia, serif; }
+  .list .why { color: var(--muted); font-size: 13px; }
+  .list .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .list .acts button { padding: 3px 10px; font-size: 13px; }
+  #pop { position: absolute; z-index: 10; max-width: 320px; padding: 10px; background: var(--panel); border: 1px solid var(--accent);
+         border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 14px; }
+  #pop .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  #pop .acts button { padding: 3px 10px; font-size: 13px; }
+  #pop .why { color: var(--muted); font-size: 13px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
+  #error { display: none; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Академический редактор</h1>
+  <p>Правка вашего собственного научного текста по правилам и словарям: без ИИ и без отправки текста в сеть. Безопасные исправления вносятся автоматически, остальное предлагается вам на выбор.</p>
+</header>
+<main>
+  <section>
+    <h2>Ваш текст</h2>
+    <textarea id="src" placeholder="Вставьте фрагмент реферата, курсовой или статьи…" spellcheck="false"></textarea>
+    <div class="settings">
+      <label>Степень вмешательства
+        <select id="intervention">
+          <option value="minimal">Минимальная</option>
+          <option value="moderate" selected>Умеренная</option>
+          <option value="deep">Глубокая</option>
+        </select>
+      </label>
+      <label>Сложность языка
+        <select id="complexity">
+          <option value="simple">Простая</option>
+          <option value="medium" selected>Средняя</option>
+          <option value="high">Высокая</option>
+        </select>
+      </label>
+      <label>Синонимы
+        <select id="synonyms">
+          <option value="click" selected>Только по клику на слово</option>
+          <option value="suggest">Предлагать по всему тексту</option>
+          <option value="auto">Заменять автоматически</option>
+        </select>
+      </label>
+      <label>Академичность: <b id="lvl">3</b> / 5
+        <input id="academic" type="range" min="1" max="5" step="1" value="3">
+      </label>
+    </div>
+    <div class="checks">
+      <label><input id="style" type="checkbox" checked> Сохранять авторский стиль (не заменять слова автоматически)</label>
+    </div>
+    <div class="checks">
+      <label><input id="expand" type="checkbox"> Развёрнутые обороты вместо коротких союзов (текст станет немного длиннее)</label>
+    </div>
+    <div class="row">
+      <span class="count" id="count">0 слов</span>
+      <button class="primary" id="go">Отредактировать</button>
+    </div>
+    <div class="badge warn" id="error" role="alert"></div>
+    <p class="note"><b>Минимальная</b> — типографика и орфография. <b>Умеренная</b> — ещё речевые ошибки, кальки, слова-паразиты. <b>Глубокая</b> — ещё замена разговорных оборотов на научные (если снята галочка авторского стиля).</p>
+    <p class="note"><b>Автозамена синонимами</b> — механическая подстановка по словарю: она не понимает контекста и может исказить смысл. Каждую замену можно поменять на другой вариант или вернуть в списке справа.</p>
+  </section>
+
+  <section>
+    <h2>Результат <span id="lang" class="count"></span></h2>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-clean" aria-selected="true">Текст</button>
+      <button role="tab" id="tab-diff" aria-selected="false">Что изменено</button>
+      <span class="spacer"></span>
+      <button id="copy" disabled>Копировать</button>
+    </div>
+    <div class="output" id="out" role="tabpanel"></div>
+    <p class="note" id="hint" hidden>Нажмите на любое слово, чтобы увидеть синонимы из словаря.</p>
+
+    <div id="report" hidden>
+      <div class="stats">
+        <div class="stat"><b id="s-changed">—</b><span>слов текста изменено инструментом</span></div>
+        <div class="stat"><b id="s-auto">—</b><span>исправлений внесено</span></div>
+        <div class="stat"><b id="s-sugg">—</b><span>предложений на ваш выбор</span></div>
+        <div class="stat"><b id="s-swap">—</b><span>слов заменено синонимами</span></div>
+      </div>
+      <div id="badges"></div>
+      <details id="d-sugg" open><summary>Предложения и замены</summary><ul class="list" id="sugg"></ul></details>
+      <details id="d-applied"><summary>Внесённые исправления</summary><ul class="list" id="applied"></ul></details>
+      <details id="d-terms"><summary>Термины (не считаются повторами)</summary><div class="chips" id="terms"></div></details>
+    </div>
+  </section>
+</main>
+<div id="pop" hidden></div>
+<script>
+const $ = id => document.getElementById(id);
+let last = null, original = "", view = "clean", active = -1, appliedAll = [];
+
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+const words = s => (s.match(/[\p{L}\p{N}_]+/gu) || []).length;
+$("src").addEventListener("input", () => { $("count").textContent = words($("src").value) + " слов"; });
+$("academic").addEventListener("input", e => { $("lvl").textContent = e.target.value; });
+
+function showError(msg) { $("error").textContent = msg; $("error").style.display = msg ? "block" : "none"; }
+
+function settings() {
+  return {
+    academic_level: +$("academic").value,
+    complexity: $("complexity").value,
+    intervention: $("intervention").value,
+    preserve_style: $("style").checked,
+    synonyms: $("synonyms").value,
+    expand: $("expand").checked,
+  };
+}
+
+async function run(text, fresh = false) {
+  const res = await fetch("/api/edit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, original, fresh, ...settings() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : res.status === 422 ? "Текст слишком длинный или настройки некорректны." : "Ошибка сервера (" + res.status + ").");
+  }
+  last = data; active = -1;
+  appliedAll.push(...data.applied);
+  $("copy").disabled = false;
+  render(); report();
+}
+
+function setActive(i, scroll) {
+  active = i;
+  document.querySelectorAll("mark").forEach(m => m.classList.toggle("active", +m.dataset.i === i));
+  document.querySelectorAll("#sugg li").forEach(li => li.classList.toggle("active", +li.dataset.i === i));
+  const target = scroll === "text" ? document.querySelector(`mark[data-i="${i}"]`) : document.querySelector(`#sugg li[data-i="${i}"]`);
+  if (target) target.scrollIntoView({ block: "nearest" });
+}
+
+function render() {
+  const out = $("out");
+  out.textContent = "";
+  if (!last) return;
+  if (view === "diff") {
+    for (const [op, text] of last.diff) out.appendChild(op === "eq" ? document.createTextNode(text) : el(op, text));
+    return;
+  }
+  const cp = Array.from(last.edited);   // смещения с сервера — в кодовых точках
+  let pos = 0;
+  const plain = (from, to) => { const n = document.createTextNode(cp.slice(from, to).join("")); n._start = from; out.appendChild(n); };
+  last.suggestions.forEach((s, i) => {
+    if (s.start < pos) return;
+    plain(pos, s.start);
+    const m = el("mark", cp.slice(s.start, s.end).join(""));
+    m.dataset.i = i; m.title = s.message;
+    if (s.kind === "swapped" || s.kind === "synonym") m.className = s.kind;
+    m.onclick = () => { $("d-sugg").open = true; setActive(i, "list"); };
+    out.appendChild(m);
+    pos = s.end;
+  });
+  plain(pos, cp.length);
+}
+
+async function applyAt(start, end, replacement, message) {
+  const cp = Array.from(last.edited);
+  const text = cp.slice(0, start).join("") + replacement + cp.slice(end).join("");
+  appliedAll.push({ before: cp.slice(start, end).join(""), after: replacement, message });
+  try { await run(text); } catch (e) { showError(e.message); }
+}
+const applySuggestion = (i, replacement) => {
+  const s = last.suggestions[i];
+  return applyAt(s.start, s.end, replacement, s.message + " (принято вами)");
+};
+
+// ---- синонимы по клику на слово
+const pop = $("pop");
+const hidePop = () => { pop.hidden = true; };
+document.addEventListener("click", e => { if (!pop.contains(e.target) && !$("out").contains(e.target)) hidePop(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") hidePop(); });
+$("out").addEventListener("scroll", hidePop);
+
+function wordAt(x, y) {
+  let node, offset;
+  if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(x, y); if (!p) return null;
+    node = p.offsetNode; offset = p.offset;
+  } else {
+    const r = document.caretRangeFromPoint(x, y); if (!r) return null;
+    node = r.startContainer; offset = r.startOffset;
+  }
+  if (!node || node.nodeType !== 3 || node._start == null || !$("out").contains(node)) return null;
+  for (const m of node.data.matchAll(/[\p{L}]+(?:['’ʼ-][\p{L}]+)*/gu)) {
+    if (m.index <= offset && offset <= m.index + m[0].length) {
+      const start = node._start + Array.from(node.data.slice(0, m.index)).length;
+      return { start, end: start + Array.from(m[0]).length, word: m[0] };
+    }
+  }
+  return null;
+}
+
+$("out").addEventListener("click", async e => {
+  if (view !== "clean" || !last || e.target.closest("mark") || String(getSelection())) { hidePop(); return; }
+  const w = wordAt(e.clientX, e.clientY);
+  if (!w) { hidePop(); return; }
+  let data;
+  try {
+    const res = await fetch("/api/synonyms", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: last.edited, start: w.start, end: w.end }) });
+    data = await res.json();
+    if (!res.ok) throw new Error();
+  } catch { hidePop(); return; }
+  pop.textContent = "";
+  pop.appendChild(el("div", "«" + w.word + "»", "what"));
+  if (data.synonyms.length) {
+    const acts = el("div", null, "acts");
+    data.synonyms.forEach(s => {
+      const b = el("button", s);
+      b.onclick = () => { hidePop(); applyAt(w.start, w.end, s, "Синоним выбран вами"); };
+      acts.appendChild(b);
+    });
+    pop.appendChild(acts);
+    pop.appendChild(el("div", "Проверьте оттенок значения и согласование соседних слов.", "why"));
+  } else {
+    pop.appendChild(el("div", data.protected ? "Слово в цитате или ссылке — менять нельзя."
+      : data.available ? "Синонимов в словаре нет." : "Для этого языка словарь синонимов не установлен.", "why"));
+  }
+  pop.hidden = false;
+  pop.style.left = Math.max(8, Math.min(e.pageX, window.innerWidth + window.scrollX - pop.offsetWidth - 12)) + "px";
+  pop.style.top = (e.pageY + 14) + "px";
+});
+
+function badge(ok, title, items) {
+  const d = el("div", (ok ? "✓ " : "⚠ ") + title, "badge " + (ok ? "ok" : "warn"));
+  if (items && items.length) { const ul = el("ul"); items.forEach(i => ul.appendChild(el("li", i))); d.appendChild(ul); }
+  $("badges").appendChild(d);
+}
+
+function report() {
+  const r = last, s = r.stats, c = r.checks;
+  $("lang").textContent = "· язык: " + r.language;
+  $("s-changed").textContent = s.changed_percent.toLocaleString("ru") + " %";
+  $("s-auto").textContent = appliedAll.length;
+  $("s-sugg").textContent = s.suggestions;
+  $("s-swap").textContent = s.swapped;
+  $("badges").textContent = "";
+  if (c.numbers_and_refs_ok) badge(true, "Все числа и ссылки на источники на месте");
+  else badge(false, "Расхождения в числах или ссылках с исходным текстом",
+             [...c.missing.map(m => "потеряно — " + m), ...c.added.map(a => "добавлено — " + a)]);
+  if (!c.morphology && r.language !== "английский") badge(false, "Словарь морфологии не установлен: поиск повторов и опечаток упрощён");
+
+  const sugg = $("sugg"); sugg.textContent = "";
+  r.suggestions.forEach((x, i) => {
+    const li = el("li"); li.dataset.i = i;
+    li.appendChild(el("div", "«" + x.text.trim() + "»", "what"));
+    li.appendChild(el("div", x.message, "why"));
+    const acts = el("div", null, "acts");
+    x.replacements.forEach((rep, n) => {
+      const back = x.kind === "swapped" && n === x.replacements.length - 1;
+      const b = el("button", back ? "↩ Вернуть «" + rep + "»" : rep.trim() === "" ? "Убрать" : rep.trim());
+      b.onclick = ev => { ev.stopPropagation(); applySuggestion(i, rep); };
+      acts.appendChild(b);
+    });
+    if (x.replacements.length) li.appendChild(acts);
+    li.onclick = () => { if (view !== "clean") setView("clean"); setActive(i, "text"); };
+    sugg.appendChild(li);
+  });
+  $("d-sugg").hidden = !r.suggestions.length;
+
+  const ap = $("applied"); ap.textContent = "";
+  appliedAll.forEach(x => {
+    const li = el("li");
+    const what = el("div", null, "what");
+    what.appendChild(el("del", x.before)); what.appendChild(document.createTextNode(" → ")); what.appendChild(el("ins", x.after || "∅"));
+    li.appendChild(what); li.appendChild(el("div", x.message, "why"));
+    ap.appendChild(li);
+  });
+  $("d-applied").hidden = !appliedAll.length;
+
+  $("terms").textContent = "";
+  r.terms.forEach(t => $("terms").appendChild(el("span", t)));
+  $("d-terms").hidden = !r.terms.length;
+  $("report").hidden = false;
+  $("hint").hidden = false;
+}
+
+function setView(v) {
+  view = v;
+  $("tab-clean").setAttribute("aria-selected", v === "clean");
+  $("tab-diff").setAttribute("aria-selected", v === "diff");
+  render();
+}
+$("tab-clean").onclick = () => setView("clean");
+$("tab-diff").onclick = () => setView("diff");
+
+$("copy").onclick = async () => {
+  if (!last) return;
+  await navigator.clipboard.writeText(last.edited);
+  $("copy").textContent = "Скопировано";
+  setTimeout(() => { $("copy").textContent = "Копировать"; }, 1500);
+};
+
+$("go").onclick = async () => {
+  const text = $("src").value;
+  if (!text.trim()) { showError("Вставьте текст для редактирования."); return; }
+  showError("");
+  original = text; appliedAll = [];
+  $("go").disabled = true;
+  try { await run(text, true); } catch (e) { showError(e.message || "Не удалось выполнить запрос."); }
+  finally { $("go").disabled = false; }
+};
+</script>
+</body>
+</html>
